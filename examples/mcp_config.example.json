@@ -1,0 +1,29 @@
+{
+  "mcpServers": {
+    "codex-astra": {
+      "command": "python",
+      "args": [
+        "<HOME>/.gemini/config/mcp/codex-astra/server.py"
+      ],
+      "env": {
+        "PYTHONIOENCODING": "utf-8",
+        "PYTHONUNBUFFERED": "1"
+      },
+      "tools": {
+        "astra_status": {
+          "eager": true
+        },
+        "astra_ask": {
+          "eager": true
+        },
+        "astra_redteam": {
+          "eager": true
+        },
+        "astra_review_diff": {
+          "eager": true
+        }
+      },
+      "timeoutSeconds": 360
+    }
+  }
+}
