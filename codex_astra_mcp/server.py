@@ -26,10 +26,11 @@ from pathlib import Path
 from typing import Any, Optional
 
 SERVER_NAME = "codex-astra"
-SERVER_VERSION = "1.2.0"
+SERVER_VERSION = "1.2.1"
 DEFAULT_MODEL = "gpt-6.2-astra"
-ALLOWED_EFFORTS = {"low", "medium", "high", "xhigh", "max"}
-DEFAULT_TIMEOUT_SEC = 240
+DEFAULT_EFFORT = "max"
+ALLOWED_EFFORTS = {"low", "medium", "high", "xhigh", "max", "ultra"}
+DEFAULT_TIMEOUT_SEC = 360
 
 # 禁用所有与纯只读代码/架构顾问无关的重型 Codex 特性，消除每次启动与工具注入开销
 DISABLED_HEAVY_FEATURES = (
@@ -223,13 +224,20 @@ def normalize_model(model: Optional[str]) -> str:
     return m if m else DEFAULT_MODEL
 
 
-def normalize_effort(effort: Optional[str], fallback: str = "medium") -> str:
+def get_default_effort() -> str:
+    env_eff = os.environ.get("ASTRA_DEFAULT_EFFORT", "").strip().lower()
+    if env_eff in ALLOWED_EFFORTS:
+        return env_eff
+    return DEFAULT_EFFORT
+
+
+def normalize_effort(effort: Optional[str], fallback: Optional[str] = None) -> str:
     e = (effort or "").strip().lower()
     if e in ALLOWED_EFFORTS:
         return e
     if e == "minimal":
         return "low"
-    return fallback
+    return fallback if (fallback in ALLOWED_EFFORTS) else get_default_effort()
 
 
 def get_thread_lock(thread_id: str) -> threading.Lock:
@@ -529,7 +537,7 @@ class CodexAppServerPool:
             raise RequestCancelledError("请求在启动前已取消")
 
         started = time.monotonic()
-        deadline = started + max(15, min(600, timeout_sec))
+        deadline = started + max(15, min(900, timeout_sec))
 
         self.ensure_started(prewarm_thread=False)
 
@@ -823,7 +831,7 @@ def run_codex_exec_readonly(
         raise RequestCancelledError("请求在启动前已取消")
 
     started = time.monotonic()
-    deadline = started + max(15, min(600, timeout_sec))
+    deadline = started + max(15, min(900, timeout_sec))
 
     proc = subprocess.Popen(
         [codex_exe, *args],
@@ -1100,6 +1108,7 @@ def handle_astra_status(_args: dict[str, Any], **_ctx: Any) -> str:
         "codex_exe": codex_exe,
         "codex_version": version,
         "default_model": DEFAULT_MODEL,
+        "default_effort": get_default_effort(),
         "supported_efforts": sorted(ALLOWED_EFFORTS),
         "sandbox_policy": "STRICT_READ_ONLY (daemon + thread + approval-denial triple lock, never modifies ~/.codex/config.toml)",
         "engine_architecture": "persistent_hot_app_server_with_lean_exec_fallback",
@@ -1120,7 +1129,7 @@ def handle_astra_ask(args: dict[str, Any], **ctx: Any) -> str:
     raw_cwd = args.get("cwd")
     cwd, has_explicit_cwd = resolve_cwd(raw_cwd)
     model = normalize_model(args.get("model"))
-    effort = normalize_effort(args.get("effort"), fallback="medium")
+    effort = normalize_effort(args.get("effort"))
     thread_id = (args.get("thread_id") or "").strip() or None
     timeout_sec = int(args.get("timeout_sec") or DEFAULT_TIMEOUT_SEC)
 
@@ -1188,7 +1197,7 @@ def handle_astra_redteam(args: dict[str, Any], **ctx: Any) -> str:
     include_git_diff = bool(args.get("include_git_diff", False))
     cwd, has_explicit_cwd = resolve_cwd(args.get("cwd"))
     model = normalize_model(args.get("model"))
-    effort = normalize_effort(args.get("effort"), fallback="medium")
+    effort = normalize_effort(args.get("effort"))
     timeout_sec = int(args.get("timeout_sec") or DEFAULT_TIMEOUT_SEC)
 
     diff_section = ""
@@ -1245,7 +1254,7 @@ def handle_astra_review_diff(args: dict[str, Any], **ctx: Any) -> str:
         raise ValueError("参数 cwd 无效或目录不存在；请提供目标 Git 仓库的绝对路径。")
 
     model = normalize_model(args.get("model"))
-    effort = normalize_effort(args.get("effort"), fallback="medium")
+    effort = normalize_effort(args.get("effort"))
     base_branch = str(args.get("base") or "").strip()
     commit_sha = str(args.get("commit") or "").strip()
     focus = str(args.get("focus") or "").strip()
@@ -1359,9 +1368,9 @@ TOOLS_SCHEMA: list[dict[str, Any]] = [
                 },
                 "effort": {
                     "type": "string",
-                    "enum": ["low", "medium", "high", "xhigh", "max"],
-                    "description": "推理思考强度：默认 medium（兼顾速度与深度）；快问选 low，硬核架构/死锁选 high 或 xhigh。",
-                    "default": "medium",
+                    "enum": ["low", "medium", "high", "xhigh", "max", "ultra"],
+                    "description": "推理思考强度：默认 max（极致深度推演）；可选 ultra（极限+自动委派），日常快问可降档选 low/medium。",
+                    "default": "max",
                 },
                 "thread_id": {
                     "type": "string",
@@ -1369,8 +1378,8 @@ TOOLS_SCHEMA: list[dict[str, Any]] = [
                 },
                 "timeout_sec": {
                     "type": "integer",
-                    "description": "超时时间（秒），默认 240。",
-                    "default": 240,
+                    "description": "超时时间（秒），默认 360（上限 900）。",
+                    "default": 360,
                 },
             },
             "required": ["prompt"],
@@ -1408,13 +1417,13 @@ TOOLS_SCHEMA: list[dict[str, Any]] = [
                 },
                 "effort": {
                     "type": "string",
-                    "enum": ["low", "medium", "high", "xhigh", "max"],
-                    "description": "默认 medium（约 7-15s）；高危架构终审可选 high。",
-                    "default": "medium",
+                    "enum": ["low", "medium", "high", "xhigh", "max", "ultra"],
+                    "description": "默认 max（极致深度红队审计）；需要极限自动委派可选 ultra，快速预检可降档选 medium/high。",
+                    "default": "max",
                 },
                 "timeout_sec": {
                     "type": "integer",
-                    "default": 240,
+                    "default": 360,
                 },
             },
             "required": ["proposal"],
@@ -1450,12 +1459,12 @@ TOOLS_SCHEMA: list[dict[str, Any]] = [
                 },
                 "effort": {
                     "type": "string",
-                    "enum": ["low", "medium", "high", "xhigh", "max"],
-                    "default": "medium",
+                    "enum": ["low", "medium", "high", "xhigh", "max", "ultra"],
+                    "default": "max",
                 },
                 "timeout_sec": {
                     "type": "integer",
-                    "default": 240,
+                    "default": 360,
                 },
             },
             "required": ["cwd"],
@@ -1653,8 +1662,8 @@ def dispatch_message(transport: StdioTransport, req: dict[str, Any]) -> None:
                         "capabilities": {"tools": {"listChanged": False}},
                         "serverInfo": {"name": SERVER_NAME, "version": SERVER_VERSION},
                         "instructions": (
-                            "零风险常驻热连接只读 GPT-6.2 Astra 协作引擎（v1.2.0）。主控负责大上下文切片、编码与测试；"
-                            "Astra 负责秒级盲评、单轮防拍马屁红队审查与极速 Git Diff 审计。"
+                            f"零风险常驻热连接只读 GPT-6.2 Astra 协作引擎（v{SERVER_VERSION}，默认推理强度 {get_default_effort()}）。"
+                            "主控负责大上下文切片、编码与测试；Astra 负责深度盲评、单轮防拍马屁红队审查与 Git Diff 审计。"
                         ),
                     },
                 }

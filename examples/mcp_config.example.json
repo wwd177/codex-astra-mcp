@@ -7,7 +7,8 @@
       ],
       "env": {
         "PYTHONIOENCODING": "utf-8",
-        "PYTHONUNBUFFERED": "1"
+        "PYTHONUNBUFFERED": "1",
+        "ASTRA_DEFAULT_EFFORT": "max"
       },
       "tools": {
         "astra_status": {
@@ -23,7 +24,7 @@
           "eager": true
         }
       },
-      "timeoutSeconds": 360
+      "timeoutSeconds": 600
     }
   }
 }

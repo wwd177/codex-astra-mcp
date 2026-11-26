@@ -1,11 +1,11 @@
-# Codex Astra MCP (`codex-astra-mcp` v1.2.0)
+# Codex Astra MCP (`codex-astra-mcp` v1.2.1)
 
-> **极速、零风险、零第三方依赖、严格只读沙箱的跨模型双核协作套件**：在官方 **Google Antigravity（Gemini 4 Neon）** 等任意 MCP 客户端内，通过**常驻热连接 `codex app-server` + 精简隔离 `codex exec` 双擎架构**，以 **5–15 秒级响应** 调度本机官方 **OpenAI Codex CLI（GPT-6.2 Astra / Sol）** 执行盲评咨询、防拍马屁红队审查与原生 Git Diff 审计。
+> **零风险、零第三方依赖、严格只读沙箱的跨模型双核协作套件**：在官方 **Google Antigravity（Gemini 4 Neon）** 等任意 MCP 客户端内，通过**常驻热连接 `codex app-server` + 精简隔离 `codex exec` 双擎架构**，默认以 **`max` 极致推理强度**（开放全 6 档 `low` / `medium` / `high` / `xhigh` / `max` / `ultra`，支持 `ASTRA_DEFAULT_EFFORT` 环境变量自定义）调度本机官方 **OpenAI Codex CLI（GPT-6.2 Astra / Sol）** 执行盲评咨询、防拍马屁红队审查与原生 Git Diff 审计。
 
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![Dependencies](https://img.shields.io/badge/Dependencies-Zero%20(Stdlib%20Only)-16a34a)](#核心特性)
+[![Dependencies](https://img.shields.io/badge/Dependencies-Zero%20(Stdlib%20Only)-16a34a)](#核心特性v121)
 [![Sandbox](https://img.shields.io/badge/Sandbox-Triple--Locked%20Read--Only-0f172a)](#零风险安全设计)
-[![Version](https://img.shields.io/badge/Version-v1.2.0-2563eb)](#核心特性)
+[![Version](https://img.shields.io/badge/Version-v1.2.1-2563eb)](#核心特性v121)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 
 ---
@@ -41,8 +41,9 @@ flowchart LR
 
 ---
 
-## 核心特性（v1.2.0）
+## 核心特性（v1.2.1）
 
+- **全 6 档推理强度 & 默认极致 `max`**：完整开放 `gpt-6.2-astra` 全 6 档强度（`low` / `medium` / `high` / `xhigh` / `max` / `ultra`），三大核心工具默认拉满至 **`max`** 并放宽超时至 360s（客户端 600s），也可通过环境变量 `ASTRA_DEFAULT_EFFORT`（如 `medium` / `high` / `xhigh` / `max` / `ultra`）按需覆写默认档位。
 - **常驻热连接 + 精简隔离双擎**：MCP 初始化时后台静默预热 `codex app-server --listen stdio://`，将 18s+ 冷启动压降至 **~0.17s**，复用长连接与 Prompt Cache；若守护进程异常中断，自动无缝降级至 `--ignore-user-config` 纯净只读 `codex exec` 引擎。
 - **自动减负加速**：自动屏蔽与只读顾问无关的重型特性（`plugins`、`apps`、`computer_use`、`browser_use`、`memories`、`hooks`、`shell_snapshot`、`code_mode_host`、`daemon_auto_start`）及全局外部 MCP，消除无关工具上下文膨胀。
 - **并发多路复用 + 精准取消**：支持多会话并行问答，`ping` 与 `astra_status` 毫秒级直出；收到 `notifications/cancelled` 时精准发送 `turn/interrupt` 秒停目标轮次（兜底进程树终止），并通过 `_write_final_once` 原子杜绝双回包。
@@ -57,9 +58,9 @@ flowchart LR
 | 工具名 | 作用 | 关键参数 |
 | :--- | :--- | :--- |
 | `astra_status` | 检查 `codex.exe` 路径、版本、热连接池状态、已屏蔽外部 MCP 列表、活跃任务数与沙箱策略 | 无 |
-| `astra_ask` | 严格只读深度咨询、单轮盲评与数理/逻辑推演（支持同工作区 `thread_id` 热续接） | `prompt`, `cwd`, `model`, `effort` (`low`..`max`), `thread_id`, `timeout_sec` |
-| `astra_redteam` | **防拍马屁红队审查**：首行强制输出唯一 `VERDICT: LGTM / NEEDS_FIX / DEADLOCK`，按 `P0 / P1 / P2` 输出带证据链的挑刺报告 | `proposal`, `focus`, `cwd`, `include_git_diff`, `model`, `effort` |
-| `astra_review_diff` | 审查指定 Git 仓库的未提交改动（默认走常驻热通道）、基准分支差异或指定 Commit | `cwd`, `base`, `commit`, `focus`, `model`, `effort` |
+| `astra_ask` | 严格只读深度咨询、单轮盲评与数理/逻辑推演（支持同工作区 `thread_id` 热续接） | `prompt`, `cwd`, `model`, `effort` (`low`..`ultra`，默认 `max`), `thread_id`, `timeout_sec` |
+| `astra_redteam` | **防拍马屁红队审查**：首行强制输出唯一 `VERDICT: LGTM / NEEDS_FIX / DEADLOCK`，按 `P0 / P1 / P2` 输出带证据链的挑刺报告 | `proposal`, `focus`, `cwd`, `include_git_diff`, `model`, `effort` (默认 `max`) |
+| `astra_review_diff` | 审查指定 Git 仓库的未提交改动（默认走常驻热通道）、基准分支差异或指定 Commit | `cwd`, `base`, `commit`, `focus`, `model`, `effort` (默认 `max`) |
 
 ---
 
@@ -101,9 +102,10 @@ powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1
       "args": ["/path/to/codex-astra-mcp/codex_astra_mcp/server.py"],
       "env": {
         "PYTHONIOENCODING": "utf-8",
-        "PYTHONUNBUFFERED": "1"
+        "PYTHONUNBUFFERED": "1",
+        "ASTRA_DEFAULT_EFFORT": "max"
       },
-      "timeoutSeconds": 360
+      "timeoutSeconds": 600
     }
   }
 }

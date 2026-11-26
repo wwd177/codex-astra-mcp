@@ -59,7 +59,8 @@ def create_fake_codex(tmpdir: Path) -> Path:
     fake_py.write_text(FAKE_CODEX_PY, encoding="utf-8")
     if os.name == "nt":
         wrapper = tmpdir / "fake_codex.cmd"
-        wrapper.write_text(f'@echo off\n"{sys.executable}" "{fake_py}" %*\n', encoding="utf-8")
+        # 使用 %~dp0 相对脚本目录，避免含中文/Unicode 的 TEMP 路径被 cmd.exe 按 ANSI/GBK 误解析
+        wrapper.write_text(f'@echo off\n"{sys.executable}" "%~dp0fake_codex.py" %*\n', encoding="ascii")
         return wrapper
     wrapper = tmpdir / "fake_codex.sh"
     wrapper.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{fake_py}" "$@"\n', encoding="utf-8")
@@ -123,13 +124,16 @@ def main() -> None:
             send({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-03-26"}})
             r1 = wait_resp(1)
             assert r1["result"]["serverInfo"]["name"] == "codex-astra"
-            assert r1["result"]["serverInfo"]["version"] == "1.2.0"
+            assert r1["result"]["serverInfo"]["version"] == "1.2.1"
             send({"jsonrpc": "2.0", "method": "notifications/initialized"})
 
             send({"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}})
             r2 = wait_resp(2)
             tool_names = [t["name"] for t in r2["result"]["tools"]]
             assert tool_names == ["astra_status", "astra_ask", "astra_redteam", "astra_review_diff"]
+            ask_schema = next(t for t in r2["result"]["tools"] if t["name"] == "astra_ask")["inputSchema"]["properties"]
+            assert ask_schema["effort"]["default"] == "max"
+            assert "ultra" in ask_schema["effort"]["enum"]
 
             # 2. 并发非阻塞 + 取消终止进程树
             send({
@@ -233,7 +237,30 @@ def main() -> None:
             r_32 = wait_resp(32)
             assert r_32["result"]["isError"] is True and "拒绝跨工作区" in r_32["result"]["content"][0]["text"]
 
-            print("ALL TESTS PASSED (codex-astra-mcp v1.2.0)")
+            # 6. 默认 max 强度与 ultra 档位透传校验
+            send({"jsonrpc": "2.0", "id": 33, "method": "tools/call", "params": {"name": "astra_status", "arguments": {}}})
+            st33 = json.loads(wait_resp(33)["result"]["content"][0]["text"])
+            assert st33["default_effort"] == "max" and "ultra" in st33["supported_efforts"]
+
+            send({
+                "jsonrpc": "2.0",
+                "id": 34,
+                "method": "tools/call",
+                "params": {"name": "astra_ask", "arguments": {"prompt": "default effort check"}},
+            })
+            r_34 = wait_resp(34)
+            assert r_34["result"]["isError"] is False and "effort=max" in r_34["result"]["content"][0]["text"]
+
+            send({
+                "jsonrpc": "2.0",
+                "id": 35,
+                "method": "tools/call",
+                "params": {"name": "astra_ask", "arguments": {"prompt": "ultra check", "effort": "ultra"}},
+            })
+            r_35 = wait_resp(35)
+            assert r_35["result"]["isError"] is False and "effort=ultra" in r_35["result"]["content"][0]["text"]
+
+            print("ALL TESTS PASSED (codex-astra-mcp v1.2.1)")
         finally:
             if proc.stdin:
                 proc.stdin.close()

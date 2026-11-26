@@ -107,7 +107,7 @@ if ($PSCmdlet.ShouldProcess($mcpConfigPath, "增量合并 codex-astra MCP 配置
       astra_redteam     = [PSCustomObject]@{ eager = $true }
       astra_review_diff = [PSCustomObject]@{ eager = $true }
     }
-    timeoutSeconds = 360
+    timeoutSeconds = 600
   }
 
   $cfgObj.mcpServers | Add-Member -NotePropertyName "codex-astra" -NotePropertyValue $entry -Force
