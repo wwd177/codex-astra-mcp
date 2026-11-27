@@ -1,11 +1,11 @@
-# Codex Astra MCP (`codex-astra-mcp` v1.2.1)
+# Codex Astra MCP (`codex-astra-mcp` v1.2.2)
 
 > **零风险、零第三方依赖、严格只读沙箱的跨模型双核协作套件**：在官方 **Google Antigravity（Gemini 4 Neon）** 等任意 MCP 客户端内，通过**常驻热连接 `codex app-server` + 精简隔离 `codex exec` 双擎架构**，默认以 **`max` 极致推理强度**（开放全 6 档 `low` / `medium` / `high` / `xhigh` / `max` / `ultra`，支持 `ASTRA_DEFAULT_EFFORT` 环境变量自定义）调度本机官方 **OpenAI Codex CLI（GPT-6.2 Astra / Sol）** 执行盲评咨询、防拍马屁红队审查与原生 Git Diff 审计。
 
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![Dependencies](https://img.shields.io/badge/Dependencies-Zero%20(Stdlib%20Only)-16a34a)](#核心特性v121)
+[![Dependencies](https://img.shields.io/badge/Dependencies-Zero%20(Stdlib%20Only)-16a34a)](#核心特性v122)
 [![Sandbox](https://img.shields.io/badge/Sandbox-Triple--Locked%20Read--Only-0f172a)](#零风险安全设计)
-[![Version](https://img.shields.io/badge/Version-v1.2.1-2563eb)](#核心特性v121)
+[![Version](https://img.shields.io/badge/Version-v1.2.2-2563eb)](#核心特性v122)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 
 ---
@@ -24,7 +24,7 @@
 ```mermaid
 flowchart LR
     U[用户] --> N[官方 Antigravity / Gemini 4 Neon<br/>1M 上下文探索 · 切片 · 写码 · 跑测试]
-    N -->|标准 MCP stdio JSON-RPC 2.0| M[codex-astra-mcp v1.2.0<br/>常驻热池 · 多路并发 · turn/interrupt]
+    N -->|标准 MCP stdio JSON-RPC 2.0| M[codex-astra-mcp v1.2.2<br/>常驻热池 · 多路并发 · turn/interrupt]
     M -->|主通道: codex app-server --listen stdio://<br/>兜底: 精简隔离 codex exec| A[本机官方 OpenAI Codex CLI<br/>GPT-6.2 Astra / Sol 三重只读锁]
     A -->|唯一 VERDICT + P0/P1/P2 证据链| N
 ```
@@ -41,15 +41,15 @@ flowchart LR
 
 ---
 
-## 核心特性（v1.2.1）
+## 核心特性（v1.2.2）
 
-- **全 6 档推理强度 & 默认极致 `max`**：完整开放 `gpt-6.2-astra` 全 6 档强度（`low` / `medium` / `high` / `xhigh` / `max` / `ultra`），三大核心工具默认拉满至 **`max`** 并放宽超时至 360s（客户端 600s），也可通过环境变量 `ASTRA_DEFAULT_EFFORT`（如 `medium` / `high` / `xhigh` / `max` / `ultra`）按需覆写默认档位。
-- **常驻热连接 + 精简隔离双擎**：MCP 初始化时后台静默预热 `codex app-server --listen stdio://`，将 18s+ 冷启动压降至 **~0.17s**，复用长连接与 Prompt Cache；若守护进程异常中断，自动无缝降级至 `--ignore-user-config` 纯净只读 `codex exec` 引擎。
-- **自动减负加速**：自动屏蔽与只读顾问无关的重型特性（`plugins`、`apps`、`computer_use`、`browser_use`、`memories`、`hooks`、`shell_snapshot`、`code_mode_host`、`daemon_auto_start`）及全局外部 MCP，消除无关工具上下文膨胀。
-- **并发多路复用 + 精准取消**：支持多会话并行问答，`ping` 与 `astra_status` 毫秒级直出；收到 `notifications/cancelled` 时精准发送 `turn/interrupt` 秒停目标轮次（兜底进程树终止），并通过 `_write_final_once` 原子杜绝双回包。
-- **严格终态校验**：独立校验 `turn.failed`、非警告 `error` 事件与进程退出码，绝不把半截输出+失败退出伪装成成功，同时自动过滤新版 `codex-cli` 启动时的非致命配置警告。
-- **零第三方依赖**：纯 Python 3.11+ 标准库（含 `tomllib`）实现，兼容 MCP **NDJSON** 与 **Content-Length** 两种 stdio 帧协议，Windows 下动态按版本号降序定位最新 Microsoft Store `OpenAI.Codex` Appx 包，同时兼容 `CODEX_BIN` 与 `PATH`（支持 macOS / Linux）。
-- **配套官方协作 Skill（v1.2）**：内置 [`skills/neon-astra-collab/SKILL.md`](./skills/neon-astra-collab/SKILL.md)，固化「三级速度档位」「单轮直达优先」「切片投喂免扫盘」「唯一 `VERDICT:` 裁决字段」等实战铁律。
+- **全 6 档推理强度 & 默认极致 `max`**：完整开放 `gpt-6.2-astra` 全 6 档强度（`low` / `medium` / `high` / `xhigh` / `max` / `ultra`），三大核心工具默认拉满至 **`max`** 并放宽超时至 360s（客户端 600s），也可通过环境变量 `ASTRA_DEFAULT_EFFORT`（如 `medium` / `high` / `xhigh` / `max` / `ultra`）实时覆写默认档位（`tools/list`、`initialize` 与 `astra_status` 全链路同步）。
+- **代次隔离热连接 + 智能精确降级双擎**：MCP 初始化时后台静默预热 `codex app-server --listen stdio://`，通过进程代次（generation）隔离彻底杜绝旧进程退出误杀新连接，跨代重启续接自动 `thread/resume`；仅在推理未发出前的守护通道异常时无缝降级至 `--ignore-user-config` 纯净只读 `codex exec`，杜绝业务失败或中途断连盲目重跑。
+- **自动减负加速 & 毫秒级非阻塞状态查询**：自动屏蔽重型特性（`plugins`、`apps`、`computer_use`、`browser_use`、`memories`、`hooks`、`shell_snapshot`、`code_mode_host`、`daemon_auto_start`）及全局外部 MCP（按 `mtime_ns` 缓存）；`astra_status` 异步非阻塞执行并缓存 `codex --version`，彻底消除主循环卡顿。
+- **零竞态并发多路复用 + 精准取消**：主线程先登记任务后启工作线程，杜绝瞬时取消丢失；异步派发 `turn/interrupt` 与进程树终止，支持飞行中 `turn/start` 补发打断、引用计数互斥锁与中断未排空防串轮保护，配合 `_write_final_once` 原子杜绝双回包。
+- **精准 Git Diff 审查**：严格区分 `commit` / `base` / 未提交三模式，兼容初始无 `HEAD` 仓库暂存区与新建未跟踪小文本文件，彻底解决 `base`/`commit` 叠加 `focus` 错审问题，并在无变更时秒级直出 `VERDICT: LGTM`。
+- **严格终态与协议合规**：独立校验 `turn.failed`、非警告 `error` 事件与进程退出码；子进程输出有界排空防 OOM；完整支持 NDJSON 与任意头序的 `Content-Length` / `Content-Type` 帧协议，零第三方依赖（纯 Python 3.11+ 标准库）。
+- **配套官方协作 Skill（v1.2.2）**：内置 [`skills/neon-astra-collab/SKILL.md`](./skills/neon-astra-collab/SKILL.md)，固化「默认满血 `max`」「单轮直达优先」「切片投喂免扫盘」「唯一 `VERDICT:` 裁决字段」等实战铁律。
 
 ---
 
@@ -131,10 +131,10 @@ python tests/test_server.py
 codex-astra-mcp/
 ├── codex_astra_mcp/
 │   ├── __init__.py
-│   └── server.py                    # 常驻热连接 + 精简隔离双擎只读 MCP Server (v1.2.0)
+│   └── server.py                    # 常驻热连接 + 精简隔离双擎只读 MCP Server (v1.2.2)
 ├── skills/
 │   └── neon-astra-collab/
-│       └── SKILL.md                 # Neon × Astra 极速零风险双核协作规范 (v1.2)
+│       └── SKILL.md                 # Neon × Astra 极速零风险双核协作规范 (v1.2.2)
 ├── examples/
 │   └── mcp_config.example.json      # Antigravity MCP 配置模板
 ├── scripts/

@@ -4,7 +4,7 @@
 .DESCRIPTION
   - 复制 codex_astra_mcp/server.py 到 ~/.gemini/config/mcp/codex-astra/server.py
   - 复制 skills/neon-astra-collab/SKILL.md 到 ~/.gemini/config/skills/neon-astra-collab/SKILL.md
-  - 备份并安全增量合并 ~/.gemini/config/mcp_config.json（保留所有已有 MCP 配置）
+  - 备份并安全增量合并 ~/.gemini/config/mcp_config.json（保留所有已有 MCP 配置及用户自定义 env 覆盖项）
   - 绝不修改 ~/.codex/config.toml
 #>
 [CmdletBinding(SupportsShouldProcess = $true)]
@@ -14,32 +14,59 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+function Test-Python311Plus {
+  param([string]$ExePath)
+  if (-not $ExePath -or -not (Test-Path -LiteralPath $ExePath -PathType Leaf)) {
+    return $null
+  }
+  try {
+    $out = & $ExePath -c "import sys, tomllib; print(f'{sys.version_info[0]}.{sys.version_info[1]}.{sys.version_info[2]}')" 2>$null
+    if ($LASTEXITCODE -eq 0 -and "$out" -match "^3\.(1[1-9]|[2-9][0-9])\.[0-9]+$") {
+      return [version]("$out".Trim())
+    }
+  } catch {}
+  return $null
+}
+
 function Resolve-PythonExe {
   param([string]$Explicit)
   if ($Explicit) {
-    if (-not (Test-Path $Explicit)) { throw "指定的 Python 路径不存在: $Explicit" }
-    return (Resolve-Path $Explicit).Path
+    if (-not (Test-Path -LiteralPath $Explicit -PathType Leaf)) {
+      throw "指定的 Python 路径不存在: $Explicit"
+    }
+    $resolved = (Resolve-Path -LiteralPath $Explicit).Path
+    $ver = Test-Python311Plus -ExePath $resolved
+    if (-not $ver) {
+      throw "指定的 Python 无法正常执行或版本低于 3.11（需标准库 tomllib）: $resolved"
+    }
+    return $resolved
   }
 
-  # 优先探测 uv 托管的独立 Python 3.12+，其次 PATH 中的 python
+  # 1. 优先探测 uv 托管的独立 Python 3.11+（按真实语义版本号降序，排除 3.10 与字典序错排）
   $uvPyRoot = Join-Path $env:APPDATA "uv\python"
-  if (Test-Path $uvPyRoot) {
-    $cand = Get-ChildItem -Path $uvPyRoot -Directory -Filter "cpython-3.1*" -ErrorAction SilentlyContinue |
-      Sort-Object Name -Descending |
-      ForEach-Object { Join-Path $_.FullName "python.exe" } |
-      Where-Object { Test-Path $_ } |
-      Select-Object -First 1
-    if ($cand) { return $cand }
+  if (Test-Path -LiteralPath $uvPyRoot -PathType Container) {
+    $validUv = @()
+    $dirs = Get-ChildItem -LiteralPath $uvPyRoot -Directory -Filter "cpython-3.*" -ErrorAction SilentlyContinue
+    foreach ($d in $dirs) {
+      $exe = Join-Path $d.FullName "python.exe"
+      $ver = Test-Python311Plus -ExePath $exe
+      if ($ver) {
+        $validUv += [PSCustomObject]@{ Path = $exe; Version = $ver }
+      }
+    }
+    if ($validUv.Count -gt 0) {
+      return ($validUv | Sort-Object Version -Descending | Select-Object -First 1).Path
+    }
   }
 
-  $pyCmd = Get-Command python -ErrorAction SilentlyContinue
-  if ($pyCmd -and (Test-Path $pyCmd.Source)) {
-    try {
-      $ver = & $pyCmd.Source --version 2>&1
-      if ($LASTEXITCODE -eq 0 -and "$ver" -match "Python 3\.(1[1-9]|[2-9][0-9])") {
-        return $pyCmd.Source
-      }
-    } catch {}
+  # 2. 遍历 PATH 中全部 python 可执行文件（跳过损坏的 WindowsApps stub）
+  $pyCmds = Get-Command python -All -ErrorAction SilentlyContinue
+  foreach ($cmd in $pyCmds) {
+    $src = $cmd.Source
+    $ver = Test-Python311Plus -ExePath $src
+    if ($ver) {
+      return $src
+    }
   }
 
   throw "未自动检测到可用的 Python 3.11+ 解释器（server.py 使用标准库 tomllib），请通过 -PythonPath 'C:\path\to\python.exe' 显式指定。"
@@ -49,8 +76,8 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $srcServer = Join-Path $repoRoot "codex_astra_mcp\server.py"
 $srcSkill = Join-Path $repoRoot "skills\neon-astra-collab\SKILL.md"
 
-if (-not (Test-Path $srcServer)) { throw "缺少源文件: $srcServer" }
-if (-not (Test-Path $srcSkill)) { throw "缺少源文件: $srcSkill" }
+if (-not (Test-Path -LiteralPath $srcServer -PathType Leaf)) { throw "缺少源文件: $srcServer" }
+if (-not (Test-Path -LiteralPath $srcSkill -PathType Leaf)) { throw "缺少源文件: $srcSkill" }
 
 $resolvedPython = Resolve-PythonExe -Explicit $PythonPath
 $configRoot = Join-Path $HOME ".gemini\config"
@@ -67,24 +94,28 @@ Write-Host "MCP 配置文件  : $mcpConfigPath"
 
 if ($PSCmdlet.ShouldProcess($dstServer, "安装只读 MCP 服务脚本")) {
   New-Item -ItemType Directory -Force -Path $dstServerDir | Out-Null
-  Copy-Item -Path $srcServer -Destination $dstServer -Force
+  Copy-Item -LiteralPath $srcServer -Destination $dstServer -Force
 }
 
 if ($PSCmdlet.ShouldProcess($dstSkill, "安装 neon-astra-collab 双核协作 Skill")) {
   New-Item -ItemType Directory -Force -Path $dstSkillDir | Out-Null
-  Copy-Item -Path $srcSkill -Destination $dstSkill -Force
+  Copy-Item -LiteralPath $srcSkill -Destination $dstSkill -Force
 }
 
-if ($PSCmdlet.ShouldProcess($mcpConfigPath, "增量合并 codex-astra MCP 配置（保留已有服务）")) {
+if ($PSCmdlet.ShouldProcess($mcpConfigPath, "增量合并 codex-astra MCP 配置（保留已有服务与自定义 env）")) {
   New-Item -ItemType Directory -Force -Path $configRoot | Out-Null
   $cfgObj = $null
-  if (Test-Path $mcpConfigPath) {
+  if (Test-Path -LiteralPath $mcpConfigPath -PathType Leaf) {
     $backupPath = "$mcpConfigPath.bak.$(Get-Date -Format 'yyyyMMdd-HHmmss')"
-    Copy-Item -Path $mcpConfigPath -Destination $backupPath -Force
+    Copy-Item -LiteralPath $mcpConfigPath -Destination $backupPath -Force
     Write-Host "已备份原配置  : $backupPath"
-    $raw = Get-Content -Path $mcpConfigPath -Raw -Encoding UTF8
-    if ($raw.Trim()) {
-      $cfgObj = $raw | ConvertFrom-Json
+    $raw = Get-Content -LiteralPath $mcpConfigPath -Raw -Encoding UTF8
+    if ($raw -and $raw.Trim()) {
+      try {
+        $cfgObj = $raw | ConvertFrom-Json
+      } catch {
+        throw "现有 mcp_config.json JSON 格式无效，已终止覆盖以保护配置（备份位于 $backupPath）: $_"
+      }
     }
   }
   if ($null -eq $cfgObj) {
@@ -94,13 +125,24 @@ if ($PSCmdlet.ShouldProcess($mcpConfigPath, "增量合并 codex-astra MCP 配置
     $cfgObj | Add-Member -NotePropertyName "mcpServers" -NotePropertyValue ([PSCustomObject]@{}) -Force
   }
 
+  # 增量保留已有 codex-astra 节点的自定义环境变量（如 ASTRA_DEFAULT_EFFORT、CODEX_BIN）
+  $envObj = [PSCustomObject]@{
+    PYTHONIOENCODING = "utf-8"
+    PYTHONUNBUFFERED = "1"
+  }
+  if ($cfgObj.mcpServers.PSObject.Properties.Name -contains "codex-astra" -and $null -ne $cfgObj.mcpServers."codex-astra") {
+    $oldEntry = $cfgObj.mcpServers."codex-astra"
+    if ($oldEntry.PSObject.Properties.Name -contains "env" -and $null -ne $oldEntry.env) {
+      foreach ($prop in $oldEntry.env.PSObject.Properties) {
+        $envObj | Add-Member -NotePropertyName $prop.Name -NotePropertyValue $prop.Value -Force
+      }
+    }
+  }
+
   $entry = [PSCustomObject]@{
     command = $resolvedPython
     args    = @($dstServer)
-    env     = [PSCustomObject]@{
-      PYTHONIOENCODING = "utf-8"
-      PYTHONUNBUFFERED = "1"
-    }
+    env     = $envObj
     tools   = [PSCustomObject]@{
       astra_status      = [PSCustomObject]@{ eager = $true }
       astra_ask         = [PSCustomObject]@{ eager = $true }

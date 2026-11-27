@@ -1,14 +1,14 @@
 ---
 name: neon-astra-collab
 description: >-
-  极致深度零风险双核协作协议（v1.2.1）：在官方 Antigravity（Gemini 4 主控）内，通过常驻热连接只读 MCP 工具 `codex-astra`
+  极致深度零风险双核协作协议（v1.2.2）：在官方 Antigravity（Gemini 4 主控）内，通过常驻热连接只读 MCP 工具 `codex-astra`
   调度本机官方 OpenAI Codex（GPT-6.2 Astra 默认 max 深度推演，开放全 6 档含 ultra）进行单轮盲评、防拍马屁红队审查与 Git Diff 审计。
   当用户提到“和 Astra 合作”、“让 6.2 审一下”、“双核模式”、“红队审查”或“跨模型复核”时启用本技能。
 ---
 
-# Gemini 4 × GPT-6.2 Astra 极致深度零风险双核协作规范（v1.2.1）
+# Gemini 4 × GPT-6.2 Astra 极致深度零风险双核协作规范（v1.2.2）
 
-本技能基于常驻热连接 `codex-astra v1.2.1` 引擎设计，默认将 **GPT-6.2 Astra** 拉满至 **`max` 极致推理强度**（并开放 `ultra` 档按需调用），确保 **Antigravity 主控（1M 上下文主工程师）** 与 **GPT-6.2 Astra（只读红队深度审查员）** 实现高质量交锋、零双写风险、杜绝互相附和（Anti-Sycophancy）。
+本技能基于常驻热连接 `codex-astra v1.2.2` 引擎设计，默认将 **GPT-6.2 Astra** 拉满至 **`max` 极致推理强度**（并开放 `ultra` 档按需调用），确保 **Antigravity 主控（1M 上下文主工程师）** 与 **GPT-6.2 Astra（只读红队深度审查员）** 实现高质量交锋、零双写风险、杜绝互相附和（Anti-Sycophancy）。
 
 ---
 
